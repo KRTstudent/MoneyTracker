@@ -41,12 +41,15 @@ git push -u origin main
 
 1. Go to vercel.com, sign up / log in with GitHub, click "Add New → Project,"
    and import the repo you just pushed.
-2. Before deploying, add three **Environment Variables** (Settings →
+2. Before deploying, add four **Environment Variables** (Settings →
    Environment Variables, or in the import screen):
    - `SUPABASE_URL` — the Project URL from step 1
    - `SUPABASE_SERVICE_ROLE_KEY` — the service role key from step 1
    - `SESSION_SECRET` — any long random string. Generate one locally with
      `openssl rand -hex 32`, or just mash the keyboard for 40+ characters.
+   - `MASTER_PASSWORD` — the password that gates *creating and deleting*
+     trips (separate from each trip's own password, which friends use to
+     view/edit that trip).
 3. Click Deploy. Vercel gives you a URL like `tally-tripsplit.vercel.app` —
    that's the link you share with friends.
 

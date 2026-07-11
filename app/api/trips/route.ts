@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getBearerToken, verifyMasterToken } from "@/lib/auth";
 
 export async function GET() {
   const { data, error } = await supabaseAdmin
@@ -13,6 +14,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!verifyMasterToken(getBearerToken(req))) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
   const { name, password } = await req.json();
 
   if (!name || typeof name !== "string" || !name.trim()) {

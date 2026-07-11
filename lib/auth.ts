@@ -31,3 +31,26 @@ export function getBearerToken(req: Request): string | null {
   const match = header.match(/^Bearer (.+)$/);
   return match ? match[1] : null;
 }
+
+/** Separate, app-wide gate for creating/deleting trips (distinct from a trip's own password). */
+export function createMasterToken(): string {
+  const payload = Buffer.from(JSON.stringify({ scope: "master", iat: Date.now() })).toString("base64url");
+  const sig = crypto.createHmac("sha256", SECRET).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+export function verifyMasterToken(token: string | null): boolean {
+  if (!token) return false;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return false;
+
+  const expectedSig = crypto.createHmac("sha256", SECRET).update(payload).digest("base64url");
+  if (sig !== expectedSig) return false;
+
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString());
+    return decoded.scope === "master";
+  } catch {
+    return false;
+  }
+}
