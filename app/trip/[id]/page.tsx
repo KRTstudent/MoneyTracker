@@ -127,6 +127,33 @@ export default function TripPage({ params }: { params: Promise<{ id: string }> }
   const balances = useMemo(() => computeBalances(people, items), [people, items]);
   const transactions = useMemo(() => settleBalances(balances), [balances]);
 
+  const personSummaries = useMemo(() => {
+    return people.map((p) => {
+      const paidTotal = items
+        .filter((i) => i.paid_by === p.id)
+        .reduce((sum, i) => sum + i.total_amount, 0);
+
+      const lineItems = items
+        .map((i) => {
+          const computed = computeItem(i);
+          const share = computed.computedShares.find((s) => s.personId === p.id);
+          return share && share.amount > 0 ? { description: i.description, amount: share.amount } : null;
+        })
+        .filter((x): x is { description: string; amount: number } => x !== null);
+
+      const owedTotal = lineItems.reduce((sum, li) => sum + li.amount, 0);
+
+      return {
+        personId: p.id,
+        name: p.name,
+        paidTotal,
+        owedTotal,
+        net: Math.round((paidTotal - owedTotal) * 100) / 100,
+        lineItems,
+      };
+    });
+  }, [people, items]);
+
   if (checkingToken) return null;
 
   if (!token) {
@@ -208,7 +235,7 @@ export default function TripPage({ params }: { params: Promise<{ id: string }> }
           onDeleteItem={deleteItem}
         />
 
-        <SettlementPanel balances={balances} transactions={transactions} />
+        <SettlementPanel balances={balances} transactions={transactions} personSummaries={personSummaries} />
       </div>
     </main>
   );
@@ -300,6 +327,7 @@ function LedgerGrid({
   const [newAmount, setNewAmount] = useState("");
   const [newPaidBy, setNewPaidBy] = useState("");
   const [newPortions, setNewPortions] = useState<Record<string, string>>({});
+  const [newIncluded, setNewIncluded] = useState<string[]>([]);
 
   const colWidth = 132;
 
@@ -308,6 +336,7 @@ function LedgerGrid({
     setNewAmount("");
     setNewPaidBy("");
     setNewPortions({});
+    setNewIncluded([]);
   }
 
   function submitNewRow() {
@@ -463,6 +492,8 @@ function LedgerGrid({
           setNewPaidBy={setNewPaidBy}
           newPortions={newPortions}
           setNewPortions={setNewPortions}
+          newIncluded={newIncluded}
+          setNewIncluded={setNewIncluded}
           onSubmit={submitNewRow}
         />
       </div>
@@ -607,6 +638,8 @@ function MobileNewItemCard({
   setNewPaidBy,
   newPortions,
   setNewPortions,
+  newIncluded,
+  setNewIncluded,
   onSubmit,
 }: {
   people: Person[];
@@ -618,15 +651,22 @@ function MobileNewItemCard({
   setNewPaidBy: (v: string) => void;
   newPortions: Record<string, string>;
   setNewPortions: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  newIncluded: string[];
+  setNewIncluded: React.Dispatch<React.SetStateAction<string[]>>;
   onSubmit: () => void;
 }) {
-  const includedIds = people.filter((p) => parseFloat(newPortions[p.id] || "0") > 0).map((p) => p.id);
-  const totalPortion = people.reduce((s, p) => s + parseFloat(newPortions[p.id] || "0"), 0);
+  const includedIds = newIncluded;
+  const totalPortion = includedIds.reduce((s, id) => s + parseFloat(newPortions[id] || "0"), 0);
 
   function toggleInclude(personId: string) {
-    setNewPortions((s) => {
-      const isIncluded = parseFloat(s[personId] || "0") > 0;
-      return { ...s, [personId]: isIncluded ? "" : "1" };
+    setNewIncluded((ids) => {
+      if (ids.includes(personId)) {
+        return ids.filter((id) => id !== personId);
+      }
+      // default to a portion of 1 the first time someone's included, but
+      // preserve whatever they'd already typed if they're toggled back on
+      setNewPortions((s) => (s[personId] ? s : { ...s, [personId]: "1" }));
+      return [...ids, personId];
     });
   }
 
@@ -806,9 +846,18 @@ function ItemRow({
 function SettlementPanel({
   balances,
   transactions,
+  personSummaries,
 }: {
   balances: { personId: string; name: string; amount: number }[];
   transactions: { from: string; fromName: string; to: string; toName: string; amount: number }[];
+  personSummaries: {
+    personId: string;
+    name: string;
+    paidTotal: number;
+    owedTotal: number;
+    net: number;
+    lineItems: { description: string; amount: number }[];
+  }[];
 }) {
   return (
     <section>
@@ -825,6 +874,68 @@ function SettlementPanel({
       <p style={{ color: "var(--moss)", fontSize: 13, margin: "0 0 16px" }}>
         Fewest payments needed to zero everyone out.
       </p>
+
+      <div style={{ display: "grid", gap: 12, marginBottom: 24 }}>
+        {personSummaries.map((ps) => (
+          <div key={ps.personId} style={mobileCardStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>{ps.name}</span>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: ps.net >= 0 ? "var(--petrol-dark)" : "var(--amber)",
+                }}
+              >
+                {ps.net >= 0 ? "+" : ""}
+                {ps.net.toFixed(2)}
+              </span>
+            </div>
+
+            {ps.lineItems.length > 0 ? (
+              <div style={{ marginTop: 8, display: "grid", gap: 4 }}>
+                {ps.lineItems.map((li, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                    <span style={{ color: "var(--ink)" }}>{li.description}</span>
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--moss)" }}>
+                      ${li.amount.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: "var(--moss)", margin: "8px 0 0" }}>Not in any items yet.</p>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 12,
+                color: "var(--moss)",
+                marginTop: 8,
+                paddingTop: 8,
+                borderTop: "1px solid var(--line)",
+              }}
+            >
+              <span>Paid ${ps.paidTotal.toFixed(2)}</span>
+              <span>Owes ${ps.owedTotal.toFixed(2)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <h3
+        style={{
+          fontFamily: "var(--font-display)",
+          fontSize: 17,
+          margin: "0 0 10px",
+          fontWeight: 600,
+        }}
+      >
+        Who pays whom
+      </h3>
 
       {transactions.length === 0 ? (
         <p style={{ fontSize: 14, color: "var(--moss)" }}>Everyone&rsquo;s square. Nothing to settle.</p>
