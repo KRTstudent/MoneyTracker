@@ -1,0 +1,53 @@
+:root {
+  --ink: #1c2321;
+  --paper: #edefea;
+  --paper-raised: #ffffff;
+  --petrol: #1f6f78;
+  --petrol-dark: #16535a;
+  --amber: #c98a2b;
+  --moss: #4b6358;
+  --line: #d4d7cd;
+
+  --font-display: "Fraunces", serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+input {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--petrol);
+  color: white;
+}
+
+:focus-visible {
+  outline: 2px solid var(--petrol);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
