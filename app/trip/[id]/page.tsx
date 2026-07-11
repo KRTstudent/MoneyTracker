@@ -322,15 +322,17 @@ function LedgerGrid({
   }
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--line)",
-        borderRadius: 12,
-        overflow: "auto",
-        background: "var(--paper-raised)",
-        marginBottom: 28,
-      }}
-    >
+    <>
+      <div
+        className="desktop-only"
+        style={{
+          border: "1px solid var(--line)",
+          borderRadius: 12,
+          overflow: "auto",
+          background: "var(--paper-raised)",
+          marginBottom: 28,
+        }}
+      >
       <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 560 + people.length * colWidth }}>
         <thead>
           <tr>
@@ -438,6 +440,277 @@ function LedgerGrid({
           </tr>
         </tbody>
       </table>
+      </div>
+
+      <div className="mobile-only">
+        {items.map((item) => (
+          <MobileItemCard
+            key={item.id}
+            item={item}
+            people={people}
+            onUpdate={(patch) => onUpdateItem(item.id, patch)}
+            onDelete={() => onDeleteItem(item.id)}
+          />
+        ))}
+
+        <MobileNewItemCard
+          people={people}
+          newDesc={newDesc}
+          setNewDesc={setNewDesc}
+          newAmount={newAmount}
+          setNewAmount={setNewAmount}
+          newPaidBy={newPaidBy}
+          setNewPaidBy={setNewPaidBy}
+          newPortions={newPortions}
+          setNewPortions={setNewPortions}
+          onSubmit={submitNewRow}
+        />
+      </div>
+    </>
+  );
+}
+
+function MobileItemCard({
+  item,
+  people,
+  onUpdate,
+  onDelete,
+}: {
+  item: CostItem;
+  people: Person[];
+  onUpdate: (patch: Partial<{ description: string; total_amount: number; paid_by: string | null; shares: { person_id: string; portion: number }[] }>) => void;
+  onDelete: () => void;
+}) {
+  const computed = computeItem(item);
+  const shareMap = new Map(item.shares.map((s) => [s.person_id, s.portion]));
+  const includedIds = people.filter((p) => (shareMap.get(p.id) || 0) > 0).map((p) => p.id);
+  const [addingPerson, setAddingPerson] = useState(false);
+
+  function setPortion(personId: string, value: string) {
+    const v = parseFloat(value || "0");
+    const newShares = people
+      .map((p) => ({ person_id: p.id, portion: p.id === personId ? v : shareMap.get(p.id) || 0 }))
+      .filter((s) => s.portion > 0);
+    onUpdate({ shares: newShares });
+  }
+
+  function includePerson(personId: string) {
+    setPortion(personId, "1");
+    setAddingPerson(false);
+  }
+
+  const paidByName = people.find((p) => p.id === item.paid_by)?.name;
+
+  return (
+    <div style={mobileCardStyle}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <input
+          defaultValue={item.description}
+          onBlur={(e) => {
+            if (e.target.value !== item.description) onUpdate({ description: e.target.value });
+          }}
+          style={{ ...mobileTitleInputStyle, flex: 1 }}
+        />
+        <button onClick={onDelete} style={delBtnStyle} aria-label="Delete item">
+          ×
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+        <label style={mobileFieldLabelStyle}>
+          Paid by
+          <select
+            defaultValue={item.paid_by || ""}
+            onChange={(e) => onUpdate({ paid_by: e.target.value || null })}
+            style={mobileSelectStyle}
+          >
+            <option value="">—</option>
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={mobileFieldLabelStyle}>
+          Total $
+          <input
+            defaultValue={item.total_amount}
+            inputMode="decimal"
+            onBlur={(e) => {
+              const v = parseFloat(e.target.value || "0");
+              if (v !== item.total_amount) onUpdate({ total_amount: v });
+            }}
+            style={mobileSelectStyle}
+          />
+        </label>
+      </div>
+
+      {paidByName && (
+        <p style={{ fontSize: 12, color: "var(--moss)", margin: "6px 0 0" }}>
+          {paidByName} covered this — split below.
+        </p>
+      )}
+
+      <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+        {includedIds.map((personId) => {
+          const person = people.find((p) => p.id === personId)!;
+          const share = computed.computedShares.find((s) => s.personId === personId);
+          return (
+            <div key={personId} style={mobilePersonRowStyle}>
+              <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{person.name}</span>
+              <input
+                defaultValue={shareMap.get(personId) || ""}
+                inputMode="decimal"
+                placeholder="portion"
+                onBlur={(e) => setPortion(personId, e.target.value)}
+                style={mobilePortionInputStyle}
+              />
+              <span style={mobileAmountStyle}>
+                {share && share.amount > 0 ? `$${share.amount.toFixed(2)}` : "—"}
+              </span>
+              <button onClick={() => setPortion(personId, "0")} style={delBtnStyle} aria-label={`Remove ${person.name}`}>
+                ×
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {includedIds.length < people.length &&
+        (addingPerson ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+            {people
+              .filter((p) => !includedIds.includes(p.id))
+              .map((p) => (
+                <button key={p.id} onClick={() => includePerson(p.id)} style={chipButtonStyle}>
+                  + {p.name}
+                </button>
+              ))}
+          </div>
+        ) : (
+          <button onClick={() => setAddingPerson(true)} style={{ ...ghostButtonStyle, marginTop: 10 }}>
+            + add person to this item
+          </button>
+        ))}
+    </div>
+  );
+}
+
+function MobileNewItemCard({
+  people,
+  newDesc,
+  setNewDesc,
+  newAmount,
+  setNewAmount,
+  newPaidBy,
+  setNewPaidBy,
+  newPortions,
+  setNewPortions,
+  onSubmit,
+}: {
+  people: Person[];
+  newDesc: string;
+  setNewDesc: (v: string) => void;
+  newAmount: string;
+  setNewAmount: (v: string) => void;
+  newPaidBy: string;
+  setNewPaidBy: (v: string) => void;
+  newPortions: Record<string, string>;
+  setNewPortions: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  onSubmit: () => void;
+}) {
+  const includedIds = people.filter((p) => parseFloat(newPortions[p.id] || "0") > 0).map((p) => p.id);
+  const totalPortion = people.reduce((s, p) => s + parseFloat(newPortions[p.id] || "0"), 0);
+
+  function toggleInclude(personId: string) {
+    setNewPortions((s) => {
+      const isIncluded = parseFloat(s[personId] || "0") > 0;
+      return { ...s, [personId]: isIncluded ? "" : "1" };
+    });
+  }
+
+  return (
+    <div style={{ ...mobileCardStyle, border: "1px dashed var(--petrol)" }}>
+      <p style={{ fontSize: 12, fontWeight: 700, color: "var(--petrol-dark)", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        New item
+      </p>
+      <input
+        value={newDesc}
+        onChange={(e) => setNewDesc(e.target.value)}
+        placeholder="What was it? (e.g. Hotel, night 1)"
+        style={mobileTitleInputStyle}
+      />
+      <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+        <label style={mobileFieldLabelStyle}>
+          Paid by
+          <select value={newPaidBy} onChange={(e) => setNewPaidBy(e.target.value)} style={mobileSelectStyle}>
+            <option value="">—</option>
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={mobileFieldLabelStyle}>
+          Total $
+          <input
+            value={newAmount}
+            onChange={(e) => setNewAmount(e.target.value)}
+            placeholder="0.00"
+            inputMode="decimal"
+            style={mobileSelectStyle}
+          />
+        </label>
+      </div>
+
+      <p style={{ fontSize: 12, color: "var(--moss)", margin: "14px 0 6px" }}>Who&rsquo;s splitting this?</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {people.map((p) => {
+          const active = includedIds.includes(p.id);
+          return (
+            <button
+              key={p.id}
+              onClick={() => toggleInclude(p.id)}
+              style={active ? chipButtonActiveStyle : chipButtonStyle}
+            >
+              {p.name}
+            </button>
+          );
+        })}
+      </div>
+
+      {includedIds.length > 0 && (
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          {includedIds.map((personId) => {
+            const person = people.find((p) => p.id === personId)!;
+            const portionVal = parseFloat(newPortions[personId] || "0");
+            const amt = totalPortion > 0 && newAmount ? (parseFloat(newAmount) * portionVal) / totalPortion : 0;
+            return (
+              <div key={personId} style={mobilePersonRowStyle}>
+                <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{person.name}</span>
+                <input
+                  value={newPortions[personId] || ""}
+                  onChange={(e) => setNewPortions((s) => ({ ...s, [personId]: e.target.value }))}
+                  placeholder="portion"
+                  inputMode="decimal"
+                  style={mobilePortionInputStyle}
+                />
+                <span style={mobileAmountStyle}>{portionVal > 0 && newAmount ? `$${amt.toFixed(2)}` : "—"}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <button
+        onClick={onSubmit}
+        disabled={!newDesc.trim() || !newAmount}
+        style={{ ...addBtnStyle, width: "100%", borderRadius: 8, marginTop: 14, padding: "12px 0", fontSize: 15, fontWeight: 700 }}
+      >
+        Add item
+      </button>
     </div>
   );
 }
@@ -708,4 +981,97 @@ const tearLineStyle: React.CSSProperties = {
   borderTop: "2px dashed var(--line)",
   position: "relative",
   marginTop: 8,
+};
+
+const mobileCardStyle: React.CSSProperties = {
+  background: "var(--paper-raised)",
+  border: "1px solid var(--line)",
+  borderRadius: 12,
+  padding: 14,
+  marginBottom: 12,
+};
+
+const mobileTitleInputStyle: React.CSSProperties = {
+  width: "100%",
+  border: "none",
+  background: "transparent",
+  fontFamily: "var(--font-body)",
+  fontSize: 16,
+  fontWeight: 700,
+  padding: "4px 0",
+};
+
+const mobileFieldLabelStyle: React.CSSProperties = {
+  flex: 1,
+  fontSize: 11,
+  fontFamily: "var(--font-mono)",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--moss)",
+};
+
+const mobileSelectStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  marginTop: 4,
+  padding: "8px 8px",
+  borderRadius: 8,
+  border: "1px solid var(--line)",
+  fontFamily: "var(--font-body)",
+  fontSize: 14,
+  background: "var(--paper)",
+};
+
+const mobilePersonRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  paddingBottom: 6,
+  borderBottom: "1px solid var(--line)",
+};
+
+const mobilePortionInputStyle: React.CSSProperties = {
+  width: 64,
+  padding: "6px 8px",
+  borderRadius: 8,
+  border: "1px solid var(--line)",
+  fontSize: 14,
+  textAlign: "center",
+};
+
+const mobileAmountStyle: React.CSSProperties = {
+  fontFamily: "var(--font-mono)",
+  fontSize: 13,
+  fontWeight: 600,
+  color: "var(--petrol-dark)",
+  minWidth: 56,
+  textAlign: "right",
+};
+
+const chipButtonStyle: React.CSSProperties = {
+  border: "1px solid var(--line)",
+  background: "var(--paper)",
+  borderRadius: 999,
+  padding: "6px 12px",
+  fontSize: 13,
+  fontWeight: 600,
+  color: "var(--ink)",
+};
+
+const chipButtonActiveStyle: React.CSSProperties = {
+  ...chipButtonStyle,
+  border: "1px solid var(--petrol)",
+  background: "var(--petrol)",
+  color: "white",
+};
+
+const ghostButtonStyle: React.CSSProperties = {
+  border: "1px dashed var(--moss)",
+  background: "transparent",
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 13,
+  color: "var(--moss)",
+  fontWeight: 600,
+  width: "100%",
 };
